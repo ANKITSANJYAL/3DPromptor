@@ -52,51 +52,79 @@ Display turntable output
 Download button + attention toggle
 
 Optional: CLIP style score slider
-
-📁 GitHub Repo Structure: promptfusion3d
-graphql
+✅ Final Repo Structure for Hugging Face Demo
+bash
 Copy
 Edit
-promptfusion3d/
-├── app/
-│   ├── main.py            # Gradio app entry point
-│   ├── interface.py       # UI logic (mode switch, inputs, outputs)
-│   └── router.py          # Mode routing logic
-├── core/
-│   ├── lpa_injector.py    # Injects prompt tokens into UNet attention
-│   ├── inference.py       # Shared logic for Zero123 inference
-│   ├── sdxl_wrapper.py    # For Mode 1: SDXL text-to-image
-│   ├── clip_utils.py      # CLIP token embedding + style scoring
-│   └── prompt_utils.py    # spaCy-based object/style token splitter
-├── assets/
-│   ├── demo_inputs/       # Sample prompts + images
-│   ├── demo_outputs/      # Stylized turntables
-│   └── lpa_diagrams/      # For attention viz (optional)
-├── examples/
-│   └── test_notebooks.ipynb
-├── README.md
-├── requirements.txt
+PromptFusion3D/
+│
+├── app/                         
+│   ├── inference.py              # Main logic for both modes (LPA + Zero123 + rendering)
+│   ├── prompt_parser.py          # spaCy-based content/style token splitter
+│   ├── utils.py                  # Helper functions (e.g., attention injection, seed control)
+│   └── models.py                 # Load SDXL, Zero123-XL, CLIP, etc.
+│
+├── gradio_app.py                 # Main Gradio UI entry point (to be run in HF Spaces)
+│
+├── requirements.txt              # Python dependencies (diffusers, gradio, transformers, etc.)
+├── README.md                     # Project description, usage, credits
+├── .gitignore
 └── LICENSE
-🔧 Setup Instructions
-Hugging Face Dependencies:
-bash
-Copy
-Edit
-pip install diffusers transformers accelerate
-Other Requirements:
-bash
-Copy
-Edit
-pip install gradio spacy ftfy
-python -m spacy download en_core_web_sm
-✅ Deliverables
-Item	Description
-main.py	Gradio app runner with mode toggle
-inference.py	Shared logic to run Zero123 with LPA
-lpa_injector.py	Hooks to apply prompt token routing
-sdxl_wrapper.py	Wrapper around SDXL pipeline
-clip_utils.py	CLIP text embedding + cosine match
-prompt_utils.py	Parses prompt into object vs. style
-README.md	Instructions, pipeline diagrams, examples
-turntable.gif	Demo output (auto-generated)
+🔍 File Breakdown
+gradio_app.py
+Starts the Gradio UI
 
+Mode selector: "Prompt-only" or "Image + Prompt"
+
+Calls inference.py with appropriate inputs
+
+Displays interactive turntable (could be video or gif)
+
+app/inference.py
+Handles both modes:
+
+Mode 1: uses uploaded image + prompt
+
+Mode 2: uses prompt only
+
+Applies LPA injection into SDXL
+
+Uses Zero123 for view synthesis
+
+Returns output as video or view grid
+
+app/prompt_parser.py
+Uses spaCy to split prompt into:
+
+Tobj: object tokens
+
+Tstyle: style tokens
+
+Outputs for use in attention injection
+
+app/utils.py
+Re-ranking logic (optional)
+
+Cross-attention mask control
+
+Seed utilities
+
+app/models.py
+Loads and wraps:
+
+SDXL
+
+Zero123 or Zero123-XL
+
+CLIP or DINO for embedding
+
+Can be extended to cache models for HF Spaces deployment
+
+🚀 Deploying to Hugging Face Spaces
+To make it HF-compatible:
+
+gradio_app.py must define a launch() function or call gr.Interface(...) directly.
+
+Store models either via from_pretrained or Space's own caching system (put large ones on HF Hub or mirror to avoid quota issues).
+
+Add a README.md with demo prompt examples and screenshots.
