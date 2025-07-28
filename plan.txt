@@ -1,0 +1,102 @@
+🚀 Project Proposal: PromptFusion3D
+PromptFusion3D is a Gradio-based app that generates stylized, view-consistent 3D turntables of objects, using either:
+
+🔵 Mode 1: Prompt-only input
+
+🟢 Mode 2: User-uploaded image + prompt
+
+It injects Local Prompt Adaptation (LPA) to preserve spatial structure and style across views.
+
+✅ Final Output
+Stylized 3D turntable GIF or interactive viewer
+
+Option to toggle between default vs. LPA stylization
+
+Optional: attention maps, CLIP style scores
+
+📦 Models to Be Used
+Task	Model	Source	Notes
+Image generation (Mode 1)	stabilityai/stable-diffusion-xl-base-1.0	Hugging Face	SDXL for prompt → image
+Multi-view synthesis	ashawkey/zero123-xl	Hugging Face	Best-performing pretrained Zero123 variant
+Style embedding	openai/clip-vit-large-patch14	Hugging Face or OpenAI	To embed style phrases
+Prompt parsing	spaCy	Local	To extract object vs. style tokens
+
+🧠 Execution Plan
+🟢 Phase 1: Mode 2 — Image + Prompt
+Upload image + prompt (e.g. "cubist style")
+
+Parse prompt → object tokens (early), style tokens (late)
+
+Generate token embeddings (with CLIP)
+
+Inject tokens into Zero123-XL’s cross-attention blocks using LPA
+
+Synthesize multi-view images from image input
+
+Stitch into a turntable GIF or viewer
+
+Show both original and stylized versions
+
+🔵 Phase 2: Mode 1 — Prompt Only
+Input prompt (e.g. "A vaporwave dragon statue")
+
+Use SDXL to generate initial image
+
+Reuse entire Mode 2 pipeline from here
+
+🎨 Phase 3: Gradio UI
+Mode selector: “Prompt only” or “Image + Prompt”
+
+Display turntable output
+
+Download button + attention toggle
+
+Optional: CLIP style score slider
+
+📁 GitHub Repo Structure: promptfusion3d
+graphql
+Copy
+Edit
+promptfusion3d/
+├── app/
+│   ├── main.py            # Gradio app entry point
+│   ├── interface.py       # UI logic (mode switch, inputs, outputs)
+│   └── router.py          # Mode routing logic
+├── core/
+│   ├── lpa_injector.py    # Injects prompt tokens into UNet attention
+│   ├── inference.py       # Shared logic for Zero123 inference
+│   ├── sdxl_wrapper.py    # For Mode 1: SDXL text-to-image
+│   ├── clip_utils.py      # CLIP token embedding + style scoring
+│   └── prompt_utils.py    # spaCy-based object/style token splitter
+├── assets/
+│   ├── demo_inputs/       # Sample prompts + images
+│   ├── demo_outputs/      # Stylized turntables
+│   └── lpa_diagrams/      # For attention viz (optional)
+├── examples/
+│   └── test_notebooks.ipynb
+├── README.md
+├── requirements.txt
+└── LICENSE
+🔧 Setup Instructions
+Hugging Face Dependencies:
+bash
+Copy
+Edit
+pip install diffusers transformers accelerate
+Other Requirements:
+bash
+Copy
+Edit
+pip install gradio spacy ftfy
+python -m spacy download en_core_web_sm
+✅ Deliverables
+Item	Description
+main.py	Gradio app runner with mode toggle
+inference.py	Shared logic to run Zero123 with LPA
+lpa_injector.py	Hooks to apply prompt token routing
+sdxl_wrapper.py	Wrapper around SDXL pipeline
+clip_utils.py	CLIP text embedding + cosine match
+prompt_utils.py	Parses prompt into object vs. style
+README.md	Instructions, pipeline diagrams, examples
+turntable.gif	Demo output (auto-generated)
+

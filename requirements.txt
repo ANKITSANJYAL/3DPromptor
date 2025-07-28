@@ -1,0 +1,26 @@
+# Core ML/AI dependencies
+diffusers>=0.24.0
+transformers>=4.35.0
+accelerate>=0.24.0
+torch>=2.0.0
+torchvision>=0.15.0
+
+# UI and web framework
+gradio>=4.0.0
+
+# NLP and text processing
+spacy>=3.7.0
+ftfy>=6.1.0
+
+# Image processing
+Pillow>=10.0.0
+opencv-python>=4.8.0
+
+# Utilities
+numpy>=1.24.0
+scipy>=1.11.0
+matplotlib>=3.7.0
+tqdm>=4.65.0
+
+# Optional: for better performance (may fail on macOS)
+# xformers>=0.0.22 
