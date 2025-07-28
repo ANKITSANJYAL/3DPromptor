@@ -1,0 +1,8 @@
+Sample Prompts for PromptFusion3D
+========================================
+
+1. cubist dragon statue
+2. vaporwave aesthetic building
+3. gothic cathedral architecture
+4. cyberpunk robot design
+5. art deco furniture piece

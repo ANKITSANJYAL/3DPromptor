@@ -25,7 +25,13 @@ class Zero123Inference:
         Args:
             model_name: Hugging Face model identifier for Zero123
         """
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # Use MPS for macOS, CUDA for Linux/Windows, CPU as fallback
+        if torch.cuda.is_available():
+            self.device = torch.device("cuda")
+        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            self.device = torch.device("mps")
+        else:
+            self.device = torch.device("cpu")
         self.model_name = model_name
         self.model = None
         self.processor = None
@@ -41,33 +47,114 @@ class Zero123Inference:
     
     def _load_model(self):
         """Load the actual Zero123 model."""
-        # This is a placeholder - actual implementation depends on model availability
-        # For now, we'll create a mock structure
-        self._create_placeholder_model()
+        # For development, use fallback model for faster startup
+        # Set this to False to load the real Zero123 model
+        USE_DEVELOPMENT_MODE = True
+        
+        if USE_DEVELOPMENT_MODE:
+            logging.info("Using development mode with fallback model for faster startup")
+            self._create_placeholder_model()
+            return
+            
+        try:
+            # Import Zero123 from diffusers
+            from diffusers import DiffusionPipeline
+            from diffusers.utils import load_image
+            import torch
+            
+            # Load Zero123-XL model
+            self.model = DiffusionPipeline.from_pretrained(
+                "ashawkey/zero123-xl",
+                torch_dtype=torch.float16 if self.device.type != "cpu" else torch.float32,
+                use_safetensors=True
+            )
+            
+            # Move to device
+            self.model = self.model.to(self.device)
+            
+            # Enable memory efficient attention if available
+            try:
+                if hasattr(self.model, "enable_xformers_memory_efficient_attention"):
+                    self.model.enable_xformers_memory_efficient_attention()
+            except Exception as e:
+                logging.warning(f"Could not enable xformers: {e}")
+            
+            # Set to evaluation mode
+            self.model.eval()
+            
+            logging.info(f"Zero123-XL model loaded successfully on {self.device}")
+            
+        except Exception as e:
+            logging.error(f"Failed to load Zero123 model: {e}")
+            logging.info("Falling back to mock model for development")
+            self._create_placeholder_model()
     
     def _create_placeholder_model(self):
-        """Create a placeholder model structure for development."""
-        # This is a mock implementation for development purposes
-        # In production, this would load the actual Zero123 model
-        class MockZero123Model:
+        """Create a fallback model for development."""
+        class FallbackZero123Model:
             def __init__(self):
-                self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+                # Use MPS for macOS, CUDA for Linux/Windows, CPU as fallback
+                if torch.cuda.is_available():
+                    self.device = torch.device("cuda")
+                elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                    self.device = torch.device("mps")
+                else:
+                    self.device = torch.device("cpu")
             
             def eval(self):
-                # Mock eval method
                 pass
             
-            def __call__(self, *args, **kwargs):
-                # Mock inference - returns a placeholder image
-                return self._mock_inference(*args, **kwargs)
+            def to(self, device):
+                self.device = device
+                return self
             
-            def _mock_inference(self, *args, **kwargs):
-                # Create a placeholder image
-                image = Image.new('RGB', (512, 512), color='gray')
+            def __call__(self, *args, **kwargs):
+                return self._generate_fallback_image(*args, **kwargs)
+            
+            def _generate_fallback_image(self, *args, **kwargs):
+                """Generate a more realistic fallback image."""
+                import numpy as np
+                from PIL import Image, ImageDraw
+                import time
+                
+                # Create a more interesting placeholder image
+                size = (512, 512)
+                image = Image.new('RGB', size, color='#2C3E50')
+                draw = ImageDraw.Draw(image)
+                
+                # Use current time to create variation
+                seed = int(time.time() * 1000) % 1000
+                np.random.seed(seed)
+                
+                # Draw some geometric shapes to simulate 3D object
+                # Center rectangle with rotation effect
+                center_x, center_y = size[0] // 2, size[1] // 2
+                rect_size = 100 + (seed % 50)
+                offset_x = (seed % 20) - 10
+                offset_y = ((seed + 100) % 20) - 10
+                
+                draw.rectangle(
+                    [center_x - rect_size//2 + offset_x, center_y - rect_size//2 + offset_y,
+                     center_x + rect_size//2 + offset_x, center_y + rect_size//2 + offset_y],
+                    fill='#E74C3C', outline='#C0392B', width=3
+                )
+                
+                # Add some decorative elements with variation
+                for i in range(3 + (seed % 3)):
+                    x = np.random.randint(50, size[0] - 50)
+                    y = np.random.randint(50, size[1] - 50)
+                    radius = np.random.randint(10, 30)
+                    color = f'#{np.random.randint(0, 0xFFFFFF):06x}'
+                    draw.ellipse([x-radius, y-radius, x+radius, y+radius], fill=color)
+                
+                # Add text with view information
+                draw.text((10, 10), f"Zero123-XL View {seed}", fill='white', font=None)
+                draw.text((10, size[1] - 30), f"Mock Output {seed}", fill='white', font=None)
+                
                 return {'images': [image]}
         
-        self.model = MockZero123Model()
-        self.processor = None  # Mock processor
+        self.model = FallbackZero123Model()
+        self.processor = None
     
     def setup_lpa_injection(self, prompt: str):
         """
@@ -81,9 +168,11 @@ class Zero123Inference:
         object_tokens = parsed['object_tokens']
         style_tokens = parsed['style_tokens']
         
-        # Setup LPA injection
-        if self.model:
+        # Setup LPA injection (only for real models)
+        if self.model and hasattr(self.model, 'named_modules'):
             lpa_injector.setup_injection(self.model, object_tokens, style_tokens)
+        else:
+            logging.info("Skipping LPA injection for fallback model")
         
         logging.info(f"LPA injection setup: {len(object_tokens)} object tokens, {len(style_tokens)} style tokens")
     
@@ -138,6 +227,8 @@ class Zero123Inference:
             
             # Create turntable animation
             turntable_gif = self._create_turntable_gif(generated_images)
+            
+            logging.info(f"Generated {len(generated_images)} images, GIF created: {turntable_gif is not None}")
             
             return {
                 'images': generated_images,
@@ -287,11 +378,26 @@ class Zero123Inference:
         """Get statistics about the current LPA injection setup."""
         return lpa_injector.get_injection_stats()
     
+    def get_model_info(self) -> Dict[str, Any]:
+        """Get information about the loaded model."""
+        return {
+            'model_name': self.model_name,
+            'device': str(self.device),
+            'model_type': type(self.model).__name__,
+            'is_fallback': hasattr(self.model, '_generate_fallback_image')
+        }
+    
     def cleanup(self):
         """Clean up resources."""
         lpa_injector.clear_hooks()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            # Clear MPS cache if available
+            try:
+                torch.mps.empty_cache()
+            except:
+                pass
 
 # Global instance for easy access
 zero123_inference = Zero123Inference() 

@@ -62,7 +62,7 @@ class ModeRouter:
                 **kwargs
             )
             
-            return {
+            result = {
                 'success': multi_view_result['success'],
                 'mode': 'prompt_only',
                 'initial_image': initial_image,
@@ -76,6 +76,9 @@ class ModeRouter:
                 'view_angles': multi_view_result.get('view_angles', []),
                 'num_generated': multi_view_result.get('num_generated', 0)
             }
+            
+            logging.info(f"Mode 1 result - success: {result['success']}, gif: {result['turntable_gif'] is not None}")
+            return result
             
         except Exception as e:
             logging.error(f"Error in Mode 1 processing: {e}")
@@ -119,7 +122,7 @@ class ModeRouter:
             style_analysis = clip_utils.get_style_confidence(prompt)
             top_style_matches = clip_utils.get_top_style_matches(prompt)
             
-            return {
+            result = {
                 'success': multi_view_result['success'],
                 'mode': 'image_prompt',
                 'original_image': input_image,
@@ -134,6 +137,9 @@ class ModeRouter:
                 'view_angles': multi_view_result.get('view_angles', []),
                 'num_generated': multi_view_result.get('num_generated', 0)
             }
+            
+            logging.info(f"Mode 2 result - success: {result['success']}, gif: {result['turntable_gif'] is not None}")
+            return result
             
         except Exception as e:
             logging.error(f"Error in Mode 2 processing: {e}")

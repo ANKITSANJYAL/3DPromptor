@@ -12,7 +12,13 @@ class LPAInjector:
     
     def __init__(self):
         """Initialize the LPA injector."""
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # Use MPS for macOS, CUDA for Linux/Windows, CPU as fallback
+        if torch.cuda.is_available():
+            self.device = torch.device("cuda")
+        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            self.device = torch.device("mps")
+        else:
+            self.device = torch.device("cpu")
         self.attention_hooks = []
         self.original_forward_fns = {}
         self.injection_config = {}
@@ -41,11 +47,16 @@ class LPAInjector:
         
     def _register_attention_hooks(self, model):
         """Register hooks for cross-attention blocks."""
-        for name, module in model.named_modules():
-            if "attn2" in name and "to_k" in name:  # Cross-attention key projection
-                hook = self._create_attention_hook(name, module)
-                self.attention_hooks.append(hook)
-                module.register_forward_hook(hook)
+        # Check if model has named_modules method (real model)
+        if hasattr(model, 'named_modules'):
+            for name, module in model.named_modules():
+                if "attn2" in name and "to_k" in name:  # Cross-attention key projection
+                    hook = self._create_attention_hook(name, module)
+                    self.attention_hooks.append(hook)
+                    module.register_forward_hook(hook)
+        else:
+            # For fallback models, skip hook registration
+            logging.info("Skipping LPA hooks for fallback model")
                 
     def _create_attention_hook(self, name: str, module):
         """Create a hook for attention injection."""

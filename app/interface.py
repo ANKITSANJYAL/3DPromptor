@@ -1,10 +1,13 @@
 import gradio as gr
 from PIL import Image
 import numpy as np
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 import logging
 import os
 from pathlib import Path
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
 
 # Import our modules
 from app.router import mode_router
@@ -43,7 +46,7 @@ class GradioInterface:
             gr.Markdown(
                 """
                 # 🎨 PromptFusion3D
-                ### Generate stylized, view-consistent 3D turntables with Local Prompt Adaptation (LPA)
+                ### Generate interactive 3D objects with Local Prompt Adaptation (LPA)
                 
                 Choose your mode and start creating amazing 3D content!
                 """
@@ -75,7 +78,8 @@ class GradioInterface:
                     image_input = gr.Image(
                         label="Upload Image (Mode 2 only)",
                         type="pil",
-                        visible=False
+                        visible=False,
+                        height=200
                     )
                     
                     # Generation Parameters
@@ -88,7 +92,7 @@ class GradioInterface:
                             value=8,
                             step=1,
                             label="Number of Views",
-                            info="More views = smoother turntable"
+                            info="More views = smoother 3D object"
                         )
                         
                         guidance_scale = gr.Slider(
@@ -118,7 +122,7 @@ class GradioInterface:
                     
                     # Generate Button
                     generate_btn = gr.Button(
-                        "🚀 Generate 3D Turntable",
+                        "🚀 Generate 3D Object",
                         variant="primary",
                         size="lg"
                     )
@@ -130,11 +134,18 @@ class GradioInterface:
                     # Output Section
                     gr.Markdown("### 🎬 Output")
                     
-                    # Main output
-                    output_gif = gr.Image(
-                        label="3D Turntable GIF",
-                        type="pil",
-                        format="gif"
+                    # 3D Viewer
+                    viewer_3d = gr.Plot(
+                        label="3D Interactive Viewer",
+                        container=True
+                    )
+                    
+                    # Individual views gallery
+                    views_gallery = gr.Gallery(
+                        label="Generated Views",
+                        columns=4,
+                        rows=2,
+                        height="auto"
                     )
                     
                     # Additional outputs
@@ -160,13 +171,13 @@ class GradioInterface:
                     # Download section
                     with gr.Row():
                         download_btn = gr.Button(
-                            "💾 Download GIF",
+                            "💾 Download 3D Model",
                             variant="secondary"
                         )
                         
                         download_path = gr.Textbox(
                             label="Download Path",
-                            value="turntable.gif",
+                            value="3d_model.glb",
                             visible=False
                         )
             
@@ -178,7 +189,7 @@ class GradioInterface:
             )
             
             generate_btn.click(
-                fn=self._generate_turntable,
+                fn=self._generate_3d_object,
                 inputs=[
                     mode_radio,
                     prompt_input,
@@ -189,7 +200,8 @@ class GradioInterface:
                     style_strength
                 ],
                 outputs=[
-                    output_gif,
+                    viewer_3d,
+                    views_gallery,
                     style_analysis,
                     prompt_analysis,
                     metadata_output
@@ -198,8 +210,8 @@ class GradioInterface:
             )
             
             download_btn.click(
-                fn=self._download_gif,
-                inputs=[output_gif],
+                fn=self._download_3d_model,
+                inputs=[viewer_3d],
                 outputs=[download_path]
             )
         
@@ -212,9 +224,9 @@ class GradioInterface:
         # Show/hide image input based on mode
         image_visible = self.current_mode == "image_prompt"
         
-        return (gr.Image(visible=image_visible),)
+        return (gr.Image(visible=image_visible, type="pil"),)
     
-    def _generate_turntable(
+    def _generate_3d_object(
         self,
         mode: str,
         prompt: str,
@@ -223,9 +235,9 @@ class GradioInterface:
         guidance_scale: float,
         seed: int,
         style_strength: float
-    ) -> Tuple[Optional[Image.Image], Dict, Dict, Dict]:
+    ) -> Tuple[go.Figure, List[Image.Image], Dict, Dict, Dict]:
         """
-        Generate 3D turntable based on mode and inputs.
+        Generate 3D object based on mode and inputs.
         
         Args:
             mode: Selected mode
@@ -237,7 +249,7 @@ class GradioInterface:
             style_strength: Style application strength
             
         Returns:
-            Tuple of (gif_image, style_analysis, prompt_analysis, metadata)
+            Tuple of (3d_plot, views_gallery, style_analysis, prompt_analysis, metadata)
         """
         try:
             # Set seed
@@ -250,6 +262,9 @@ class GradioInterface:
             # Determine actual mode
             actual_mode = "image_prompt" if mode == "Image + Prompt" else "prompt_only"
             
+            # Debug input validation
+            logging.info(f"Mode: {actual_mode}, Prompt: {prompt}, Image: {input_image is not None}")
+            
             # Validate inputs
             is_valid, error_msg = mode_router.validate_inputs(
                 actual_mode,
@@ -258,7 +273,7 @@ class GradioInterface:
             )
             
             if not is_valid:
-                return None, {}, {}, {'error': error_msg}
+                return self._create_error_plot(error_msg), [], {}, {}, {'error': error_msg}
             
             # Route to appropriate processing
             if actual_mode == "prompt_only":
@@ -280,10 +295,13 @@ class GradioInterface:
                 )
             
             if not result['success']:
-                return None, {}, {}, {'error': result.get('error', 'Generation failed')}
+                return self._create_error_plot(result.get('error', 'Generation failed')), [], {}, {}, {'error': result.get('error', 'Generation failed')}
             
             # Prepare outputs
-            gif_image = result.get('turntable_gif')
+            images = result.get('multi_view_images', [])
+            
+            # Create 3D viewer
+            plot_3d = self._create_3d_viewer(images, result.get('view_angles', []))
             
             # Style analysis
             style_analysis = {}
@@ -306,45 +324,119 @@ class GradioInterface:
                 'view_angles': result.get('view_angles', [])
             }
             
-            return gif_image, style_analysis, prompt_analysis, metadata
+            return plot_3d, images, style_analysis, prompt_analysis, metadata
             
         except Exception as e:
-            logging.error(f"Error in turntable generation: {e}")
-            return None, {}, {}, {'error': str(e)}
+            logging.error(f"Error in 3D object generation: {e}")
+            return self._create_error_plot(str(e)), [], {}, {}, {'error': str(e)}
     
-    def _download_gif(self, gif_image: Optional[Image.Image]) -> str:
-        """Handle GIF download."""
-        if gif_image is None:
-            return "No GIF to download"
+    def _create_3d_viewer(self, images: List[Image.Image], view_angles: List[Tuple[float, float]]) -> go.Figure:
+        """Create an interactive 3D viewer from multiple images."""
+        if not images:
+            return self._create_error_plot("No images generated")
         
         try:
-            # Save GIF to assets/demo_outputs
+            # Create a 3D scatter plot with images as points
+            fig = go.Figure()
+            
+            # Convert images to base64 for display
+            import base64
+            from io import BytesIO
+            
+            for i, (image, (elevation, azimuth)) in enumerate(zip(images, view_angles)):
+                # Convert image to base64
+                buffered = BytesIO()
+                image.save(buffered, format="PNG")
+                img_str = base64.b64encode(buffered.getvalue()).decode()
+                
+                # Create 3D point with image
+                fig.add_trace(go.Scatter3d(
+                    x=[np.cos(np.radians(azimuth)) * np.cos(np.radians(elevation))],
+                    y=[np.sin(np.radians(azimuth)) * np.cos(np.radians(elevation))],
+                    z=[np.sin(np.radians(elevation))],
+                    mode='markers',
+                    marker=dict(
+                        size=10,
+                        color='red',
+                        opacity=0.8
+                    ),
+                    text=[f"View {i+1}: {elevation:.1f}°, {azimuth:.1f}°"],
+                    hovertemplate='<b>%{text}</b><extra></extra>',
+                    name=f"View {i+1}"
+                ))
+            
+            # Update layout for better 3D viewing
+            fig.update_layout(
+                title="3D Object Viewer - Click and drag to rotate",
+                scene=dict(
+                    xaxis_title="X",
+                    yaxis_title="Y", 
+                    zaxis_title="Z",
+                    camera=dict(
+                        eye=dict(x=1.5, y=1.5, z=1.5)
+                    )
+                ),
+                width=600,
+                height=500
+            )
+            
+            return fig
+            
+        except Exception as e:
+            logging.error(f"Error creating 3D viewer: {e}")
+            return self._create_error_plot(f"Error creating 3D viewer: {str(e)}")
+    
+    def _create_error_plot(self, error_msg: str) -> go.Figure:
+        """Create an error plot."""
+        fig = go.Figure()
+        fig.add_annotation(
+            text=f"Error: {error_msg}",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(size=16, color="red")
+        )
+        fig.update_layout(
+            title="Generation Error",
+            width=600,
+            height=500
+        )
+        return fig
+    
+    def _download_3d_model(self, plot_3d: go.Figure) -> str:
+        """Handle 3D model download."""
+        if plot_3d is None:
+            return "No 3D model to download"
+        
+        try:
+            # Save 3D model (for now, save as HTML)
             output_dir = Path("assets/demo_outputs")
             output_dir.mkdir(parents=True, exist_ok=True)
             
-            filename = f"turntable_{int(np.random.randint(10000, 99999))}.gif"
+            filename = f"3d_model_{int(np.random.randint(10000, 99999))}.html"
             filepath = output_dir / filename
             
-            gif_image.save(filepath, save_all=True, loop=0)
+            plot_3d.write_html(str(filepath))
             
             return f"Saved to: {filepath}"
             
         except Exception as e:
-            logging.error(f"Error saving GIF: {e}")
-            return f"Error saving GIF: {str(e)}"
+            logging.error(f"Error saving 3D model: {e}")
+            return f"Error saving 3D model: {str(e)}"
     
     def get_interface_info(self) -> Dict[str, Any]:
         """Get information about the interface."""
         return {
             'title': 'PromptFusion3D',
-            'description': 'Generate stylized 3D turntables with LPA',
+            'description': 'Generate interactive 3D objects with LPA',
             'modes': ['prompt_only', 'image_prompt'],
             'features': [
                 'Mode switching',
                 'Real-time generation',
+                'Interactive 3D viewer',
                 'Style analysis',
                 'Prompt analysis',
-                'GIF download',
+                '3D model download',
                 'Progress tracking'
             ]
         }

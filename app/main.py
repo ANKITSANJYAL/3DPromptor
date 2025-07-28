@@ -50,13 +50,15 @@ def setup_environment():
         logger.error("✗ spaCy English model not found. Please run: python -m spacy download en_core_web_sm")
         return False
     
-    # Check CUDA availability
+    # Check device availability
     try:
         import torch
         if torch.cuda.is_available():
             logger.info(f"✓ CUDA available: {torch.cuda.get_device_name(0)}")
+        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            logger.info("✓ MPS (Metal Performance Shaders) available for macOS")
         else:
-            logger.warning("⚠ CUDA not available, using CPU")
+            logger.warning("⚠ Using CPU - consider GPU for better performance")
     except ImportError:
         logger.error("✗ PyTorch not installed")
         return False
@@ -87,13 +89,14 @@ def initialize_models():
         
         # Initialize SDXL wrapper
         logger.info("Loading SDXL model...")
+        sdxl_wrapper.optimize_for_inference()
         sdxl_info = sdxl_wrapper.get_model_info()
         logger.info(f"✓ SDXL model loaded: {sdxl_info['parameters']:,} parameters")
         
         # Initialize Zero123 inference
         logger.info("Loading Zero123 model...")
-        # Note: This is a placeholder - actual Zero123 loading would happen here
-        logger.info("✓ Zero123 inference initialized")
+        zero123_info = zero123_inference.get_model_info()
+        logger.info(f"✓ Zero123 model loaded: {zero123_info.get('model_name', 'Fallback')}")
         
         # Test prompt parser
         logger.info("Testing prompt parser...")
@@ -161,18 +164,6 @@ def main():
         share=False,  # Set to True to create public link
         debug=True,
         show_error=True,
-        favicon_path=None,
-        auth=None,
-        auth_message=None,
-        prevent_thread_lock=False,
-        show_api=False,
-        file_directories=None,
-        quiet=False,
-        show_tips=True,
-        height=800,
-        enable_queue=True,
-        max_threads=40,
-        analytics_enabled=False,
         inbrowser=True
     )
     

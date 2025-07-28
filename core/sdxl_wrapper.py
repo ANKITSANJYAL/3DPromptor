@@ -17,15 +17,23 @@ class SDXLWrapper:
         Args:
             model_name: Hugging Face model identifier for SDXL
         """
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # Use MPS for macOS, CUDA for Linux/Windows, CPU as fallback
+        if torch.cuda.is_available():
+            self.device = torch.device("cuda")
+        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            self.device = torch.device("mps")
+        else:
+            self.device = torch.device("cpu")
         self.model_name = model_name
         
         try:
-            # Load SDXL pipeline
+            # Load SDXL pipeline with optimizations
             self.pipeline = StableDiffusionXLPipeline.from_pretrained(
                 model_name,
-                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-                use_safetensors=True
+                torch_dtype=torch.float16 if self.device.type != "cpu" else torch.float32,
+                use_safetensors=True,
+                variant="fp16" if self.device.type != "cpu" else None,
+                low_cpu_mem_usage=True
             )
             
             # Move to device
@@ -191,18 +199,25 @@ class SDXLWrapper:
     
     def optimize_for_inference(self):
         """Optimize the model for faster inference."""
-        if torch.cuda.is_available():
-            # Enable memory efficient attention
+        try:
+            # Enable memory efficient attention if available
             if hasattr(self.pipeline, "enable_xformers_memory_efficient_attention"):
                 self.pipeline.enable_xformers_memory_efficient_attention()
             
-            # Enable model CPU offload
+            # Enable model CPU offload for memory optimization
             if hasattr(self.pipeline, "enable_model_cpu_offload"):
                 self.pipeline.enable_model_cpu_offload()
             
             # Enable sequential CPU offload
             if hasattr(self.pipeline, "enable_sequential_cpu_offload"):
                 self.pipeline.enable_sequential_cpu_offload()
+                
+            # Set attention processor for better performance
+            if hasattr(self.pipeline, "set_use_memory_efficient_attention_xformers"):
+                self.pipeline.set_use_memory_efficient_attention_xformers(True)
+                
+        except Exception as e:
+            logging.warning(f"Could not apply all optimizations: {e}")
     
     def cleanup(self):
         """Clean up resources."""
